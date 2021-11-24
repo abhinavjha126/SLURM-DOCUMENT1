@@ -1,0 +1,137 @@
+1)Make a kubernetes cluster with master and nodes
+
+2)Clone SLURM files through "git clone https://github.com/abhinavjha126/SLURM.git"
+  Username: abhinavjha126
+  Token: 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
+
+3) "mkdir /lustre" on nodes on which pod is to be created
+
+4)cd SLURM/
+ * kubectl apply -f sc.yml
+ * cd..
+ * cd master/
+ * vi master.yml
+      WRITE the hostname under values section in matchExpressions at 2 places
+      ADD pv and pvc as per your requirement
+      WRITE image as "rancavil/slurm-master:19.05.5-1"
+ * kubectl apply -f master.yml
+ * kubectl apply -f service1.yml
+ ----------------------------------------------------------------------------
+ * cd..
+ * cd worker/
+ * vi worker1.yml
+      WRITE the hostname under values section in matchExpressions at 2 places
+      ADD pv and pvc as per your requirement
+      WRITE image as "rancavil/slurm-node:19.05.5-1"
+ * kubectl apply -f worker1.yml
+ * SIMILARLY configure and apply worker2 also
+ ----------------------------------------------------------------------------
+ * cd..
+ * cd jlab/
+ * vi jlab.yml
+      WRITE the hostname under values section in matchExpressions at 2 places
+      ADD pv and pvc as per your requirement
+      WRITE image as "rancavil/slurm-jupyter:19.05.5-1"
+ * kubectl apply -f worker1.yml
+ * kubectl apply -f service3.yml
+
+5) RUN "kubectl get pods" command to get list of all running pods
+
+6) RUN "kubectl exec pod <POD_NAME> -it -- /bin/bash" command to get inside each of master,worker and jupyterlab pods.Just change the POD_NAME.
+
+7) Get inside each pod and RUN this "cat /etc/hosts" to get ip and hostname.
+   And enlist them like this:
+           10.244.17.193	slurm-master
+           10.244.17.196	jupyterlab-667b74958f-8jr2w
+           10.244.17.194	slurm-worker-1
+           10.244.17.195	slurm-worker-2
+
+8) COPY	this list, go to every pod and paste it in "vi /etc/hosts"
+
+9) By default munge is started on master and worker nodes but it is stopped on jupyterlab pod.So,get inside jupyterlab pod and start munge by using the command : "service munge start"
+
+10) In all nodes,go to "cd /etc/slurm-llnl"
+
+11) RUN these commands:
+           "rm -rf slurm.conf"
+           "vi slurm.conf"
+                SlurmctldHost=slurm-master
+                ControlAddr=10.244.17.193
+                MpiDefault=none
+                ProctrackType=proctrack/linuxproc
+                ReturnToService=1
+                SlurmctldPidFile=/var/run/slurmctld.pid
+                SlurmctldPort=6817
+                SlurmdPidFile=/var/run/slurmd.pid
+                SlurmdPort=6818
+                SlurmdSpoolDir=/var/spool/slurmd
+                SlurmUser=root
+                StateSaveLocation=/var/spool
+                SwitchType=switch/none
+                TaskPlugin=task/affinity
+                TaskPluginParam=Sched
+                InactiveLimit=0
+                KillWait=30
+                MinJobAge=300
+                SlurmctldTimeout=120
+                SlurmdTimeout=300
+                Waittime=0
+                SchedulerType=sched/backfill
+                SelectType=select/cons_res
+                SelectTypeParameters=CR_Core
+                AccountingStorageType=accounting_storage/none
+                AccountingStoreJobComment=YES
+                ClusterName=cluster
+                JobCompType=jobcomp/none
+                JobAcctGatherFrequency=30
+                JobAcctGatherType=jobacct_gather/none
+                SlurmctldDebug=error
+                SlurmctldLogFile=/var/log/slurm-llnl/slurmctld.log
+                SlurmdDebug=error
+                SlurmdLogFile=/var/log/slurm-llnl/slurmd.log
+                NodeName=slurm-worker-[1-2] CPUs=2 State=UNKNOWN
+                PartitionName=slurmpar Nodes=ALL Default=YES MaxTime=INFINITE State=UP
+
+12) Being in this directory "/etc/slurm-llnl" ,RUN this command "cp -r slurm.conf /etc/slurm"
+    (On every node)
+
+13) On every worker node, start slurmd by using command:
+      * "service slurmd start"
+
+14) On master node, stop and start slurmctld by using commands:
+      * "service slurmctld stop"
+      * "service slurmctld start"
+
+15) Now run these commands to verify whether the master is connected to jupyterlab pod:
+      * "sinfo" (Shows NODELIST along with PARTITION and AVAILABILITY)
+      * "scontrol show node" (Output=All workers attached to the master)
+
+16) Access the JupyterLab from the Web-Browser by following steps:-
+      * In kubernetes master, run "kubectl get svc" and get the port that is exposed as shown below.
+      * Get the public ip of the server
+      * Write the public-ip and port as shown (eg: 15.206.128.94:31841) in the URL
+      * Enter password as "password"
+
+17) Now we will run a job to test.
+
+18) On JupyterLab Dashboard go to "File -> New -> Text File"
+
+19) RENAME the "Text File" as "cron.sbatch" and paste the below content
+           #!/bin/bash
+           #SBATCH --job-name=cron
+           #SBATCH --begin=now+7days
+           #SBATCH --dependency=singleton
+           #SBATCH --time=00:02:00
+           #SBATCH --mail-type=FAIL
+           ## Insert the command to run below. Here, we're just storing the date in a
+           ## cron.log file
+           date -R >> $HOME/cron.log
+
+           ## Resubmit the job for the next execution
+           sbatch $0
+
+20) On GUI, goto "Slurm Queue" and click on "Submit Job" and chhose the File Path as "/home/admin/cron.sbatch"
+
+20) RUN "squeue -u root" to get the output as shown below
+
+21) On GUI, goto "Slurm Queue" and "Reload" to get the desired result
